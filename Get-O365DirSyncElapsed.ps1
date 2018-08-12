@@ -10,7 +10,7 @@
 	===========================================================================
 
 	.LINK
-	https://www.lazyexchangeadmin.com/2018/04/simple-o365-lastdirsynctime-monitor.html
+	https://www.lazyexchangeadmin.com/2018/08/monitor-azure-ad-lastdirsynctime-using.html
 
 	.SYNOPSIS
 	Use Get-O365DirSyncElapsed.ps1 to query the last DirSync update time and send an email alert to specified recipients
@@ -32,11 +32,12 @@ $onLineCredential = Import-Clixml "$($script_root)\ExOnlineStoredCredential.xml"
 #mail variables - this example relays the email via O365 with authentication using port 587
 $toAddress = "junec@lexadm.onmicrosoft.com","june.castillote@gmail.com"
 $fromAddress = "$($onLineCredential.Username)"
+$mailSubject = "ALERT: Office365 DirSync Last Update Time"
 $smtpServer = "smtp.office365.com"
 $smtpPort = "587"
 
 #dirsync threshold in hours
-[int]$dirSyncElapsedTimeThreshold = 0
+[int]$dirSyncElapsedTimeThreshold = 2
 
 Write-Host (Get-Date) ": Connecting to Office 365"
 
@@ -65,7 +66,7 @@ if ($dirSyncElapsedTime.Hours -ge $dirSyncElapsedTimeThreshold)
 	$mailParams = @{		
 		To = $toAddress
 		From = $fromAddress
-		Subject = "ALERT: O365 DirSync Last Update Time"
+		Subject = $mailSubject
 		Body = "Last DirSync Time was on $($info.LastDirSyncTime) UTC is over $($dirSyncElapsedTime.Hours) HOURS ago"
 		SmtpServer = $smtpServer
 		Port = $smtpPort

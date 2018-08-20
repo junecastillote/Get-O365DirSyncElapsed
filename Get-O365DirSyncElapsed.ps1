@@ -38,7 +38,7 @@ Start-Transcript -Path "$($script_root)\debugLog.txt" -Append
 $onLineCredential = Import-Clixml "$($script_root)\ExOnlineStoredCredential.xml"
 
 #mail variables - this example relays the email via O365 with authentication using port 587
-$toAddress = "june.castillote@outlook.com","june.castillote@gmail.com"
+$toAddress = "june.castillote@lazyexchangeadmin.com","june.castillote@gmail.com"
 $fromAddress = "$($onLineCredential.Username)"
 $mailSubject = "ALERT: Office365 DirSync Last Update Time"
 $smtpServer = "smtp.office365.com"
@@ -79,7 +79,7 @@ if ($dirSyncElapsedTime.Hours -ge $dirSyncElapsedTimeThreshold)
 		To = $toAddress
 		From = $fromAddress
 		Subject = $mailSubject
-		Body = "Last DirSync Time was on $($info.LastDirSyncTime) UTC is over $($dirSyncElapsedTime.Hours) HOURS ago"
+		Body = "Last DirSync Time ($($info.LastDirSyncTime)) was over $($dirSyncElapsedTime.Hours) HOURS ago"
 		SmtpServer = $smtpServer
 		Port = $smtpPort
 		Credential = $onLineCredential

@@ -1,12 +1,12 @@
+#Requires -Version 5.1
 <#	
 	.NOTES
 	===========================================================================
-	 Created on:   	19-04-2018
+	 Created on:   	19-April-2018
 	 Created by:   	Tito D. Castillote Jr.
 					june.castillote@gmail.com
-					tito.castillote-jr@dxc.com
 	 Filename:     	Get-O365DirSyncElapsed.ps1
-	 Version:		1.0 (19-04-2018)
+	 Version:		1.1 (20-August-2018)
 	===========================================================================
 
 	.LINK
@@ -19,6 +19,14 @@
 	
 #>
 
+#=================================================================================
+#	1.0 - April 19, 2018
+#		- Initial Release
+#	1.1 - August 20, 2018
+#		- Changed Time Stamp from UTC to Local Time, including the Time Zone ID
+#		- Required PowerShell v5.1
+#=================================================================================
+
 $WarningPreference = "SilentlyContinue"
 $script_root = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 Start-Transcript -Path "$($script_root)\debugLog.txt" -Append
@@ -30,14 +38,14 @@ Start-Transcript -Path "$($script_root)\debugLog.txt" -Append
 $onLineCredential = Import-Clixml "$($script_root)\ExOnlineStoredCredential.xml"
 
 #mail variables - this example relays the email via O365 with authentication using port 587
-$toAddress = "junec@lexadm.onmicrosoft.com","june.castillote@gmail.com"
+$toAddress = "june.castillote@outlook.com","june.castillote@gmail.com"
 $fromAddress = "$($onLineCredential.Username)"
 $mailSubject = "ALERT: Office365 DirSync Last Update Time"
 $smtpServer = "smtp.office365.com"
 $smtpPort = "587"
 
 #dirsync threshold in hours
-[int]$dirSyncElapsedTimeThreshold = 2
+[int]$dirSyncElapsedTimeThreshold = 0
 
 Write-Host (Get-Date) ": Connecting to Office 365"
 
@@ -53,11 +61,15 @@ catch
 	}
 
 Write-Host (Get-Date) ": Retrieve Last Update Time"
+$TimeZoneUTC = (Get-TimeZone).ToString().Split(" ")[0]
+$TimeZoneID = (Get-TimeZone).ID
+
+
 $info = Get-MsolCompanyInformation
-$timeNow = (Get-Date).ToUniversalTime()
-$dirSyncElapsedTime = New-TimeSpan -Start $info.LastDirSyncTime.ToUniversalTime() -End $timeNow
-Write-Host (Get-Date) ": Time Now is $timeNow (UTC)"
-Write-Host (Get-Date) ": Last DirSync Time $($info.LastDirSyncTime) UTC"
+$timeNow = (Get-Date).ToLocalTime()
+$dirSyncElapsedTime = New-TimeSpan -Start $info.LastDirSyncTime.ToLocalTime() -End $timeNow
+Write-Host (Get-Date) ": Time Now is $timeNow $($TimeZoneUTC) ($($TimeZoneID))"
+Write-Host (Get-Date) ": Last DirSync Time $($info.LastDirSyncTime.ToLocalTime()) $($TimeZoneUTC) ($($TimeZoneID))"
 Write-Host (Get-Date) ": Total Elapsed Time $($dirSyncElapsedTime.Hours) Hours"
 
 if ($dirSyncElapsedTime.Hours -ge $dirSyncElapsedTimeThreshold)

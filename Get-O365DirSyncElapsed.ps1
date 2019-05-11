@@ -103,7 +103,77 @@ Param(
 #		- Required PowerShell v5.1
 #=================================================================================
 
-$script_root = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+#FUNCTIONS
+#Function to Stop Transaction Logging
+Function Stop-TxnLogging
+{
+	$txnLog=""
+	Do {
+		try {
+			Stop-Transcript | Out-Null
+		} 
+		catch [System.InvalidOperationException]{
+			$txnLog="stopped"
+		}
+    } While ($txnLog -ne "stopped")
+}
+
+#Function to Start Transaction Logging
+Function Start-TxnLogging
+{
+    param 
+    (
+        [Parameter(Mandatory=$true,Position=0)]
+        [string]$logDirectory
+    )
+	Stop-TxnLogging
+    Start-Transcript $logDirectory -Append
+}
+
+#Function to get Script Version and ProjectURI for PSv4
+Function Get-ScriptInfo
+{
+    param 
+    (
+        [Parameter(Mandatory=$true,Position=0)]
+        [string]$Path
+    )
+    $scriptInfo = "" | Select-Object Version,ProjectURI
+    $scriptInfo.Version = (Select-String -Pattern ".VERSION" -Path $Path)[0].ToString().split(" ")[1]
+    $scriptInfo.ProjectURI = (Select-String -Pattern ".PROJECTURI" -Path $Path)[0].ToString().split(" ")[1]
+    Return $scriptInfo
+}
+
+#Get timezone information for PSv4 and below
+Function Get-TimeZoneInfo
+{
+    param 
+    (
+        [Parameter()]
+        [string]$Computer
+    )
+
+    if (!$Computer)
+    {
+        $Computer = ($env:COMPUTERNAME)
+    }
+
+    $win32_timezone = Get-WmiObject -Class win32_timezone -ComputerName $Computer -ErrorAction Stop
+
+    if ($win32_timezone.DaylightBias -eq 0) { $daylightsaving = "no" } else { $daylightsaving = "yes" }
+
+    $timeZoneInfo = "" | Select-Object ComputerName,StandardName,DisplayName,IsDaylightSavingTime
+    
+    $timeZoneInfo.ComputerName = $Computer
+    $timeZoneInfo.DisplayName = $win32_timezone.Caption
+    $timeZoneInfo.StandardName = $win32_timezone.StandardName
+    $timeZoneInfo.IsDaylightSavingTime = $daylightsaving
+
+    Return $timeZoneInfo
+}
+#=================================================================================
+
+#$script_root = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 
 #MSOnline Module check
 if (!(Get-Module -ListAvailable MSOnline))
@@ -113,17 +183,6 @@ if (!(Get-Module -ListAvailable MSOnline))
 	EXIT
 }
 
-#Import Functions
-if (!(Test-Path "$script_root\xFunctions.ps1"))
-{
-	Write-Host "ERROR: This script requires functions that are present in another script" 
-	Write-Host "ERROR: Please download this file (1.0): https://raw.githubusercontent.com/junecastillote/xFunctions/master/xFunctions.ps1" 
-	Write-Host "ERROR: Then save it in $script_root, before trying to run the script again." 
-	EXIT
-}
-else {	
-	. "$script_root\xFunctions.ps1"
-}
 
 #Get script version and url
 if ($PSVersionTable.psversion.Major -lt 5) 

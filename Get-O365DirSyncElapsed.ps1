@@ -1,23 +1,99 @@
-#Requires -Version 5.1
-<#	
-	.NOTES
-	===========================================================================
-	 Created on:   	19-April-2018
-	 Created by:   	Tito D. Castillote Jr.
-					june.castillote@gmail.com
-	 Filename:     	Get-O365DirSyncElapsed.ps1
-	 Version:		1.1 (20-August-2018)
-	===========================================================================
 
-	.LINK
-	https://www.lazyexchangeadmin.com/2018/08/monitor-office-365-lastdirsynctime.html
+<#PSScriptInfo
 
-	.SYNOPSIS
-	Use Get-O365DirSyncElapsed.ps1 to query the last DirSync update time and send an email alert to specified recipients
+.VERSION 1.2
 
-	.DESCRIPTION
-	
+.GUID 9b474c7e-2715-4317-b8c0-88b0a5af3617
+
+.AUTHOR June Castillote
+
+.COMPANYNAME www.lazyexchangeadmin.com
+
+.COPYRIGHT june.castillote@gmail.com
+
+.TAGS
+
+.LICENSEURI
+
+.PROJECTURI https://github.com/junecastillote/Get-O365DirSyncElapsed
+
+.ICONURI
+
+.EXTERNALMODULEDEPENDENCIES 
+
+.REQUIREDSCRIPTS
+
+.EXTERNALSCRIPTDEPENDENCIES
+
+.RELEASENOTES
+
+
+.PRIVATEDATA
+
+#> 
+
+
+<# 
+
+.DESCRIPTION 
+script to query the last DirSync update time and send an email alert to specified recipients when a specified threshold is breached.
+
+.EXAMPLE
+$credential = (Get-Credential) ; .\Get-O365DirSyncElapsed.ps1 -credential $credential -logDirectory .\log -sender sender@domain.com -recipients recipient1@domain.com,recipient2@domain.com -smtpServer smtp.office365.com -smtpPort 587 -smtpCredential $credential -smtpSSL -threshold 1
+
+Manually entering Office 365 credential
+
+.EXAMPLE
+$credential = Import-CliXML .\credential.xml ; .\Get-O365DirSyncElapsed.ps1 -credential $credential -logDirectory .\log -sender sender@domain.com -recipients recipient1@domain.com,recipient2@domain.com -smtpServer smtp.office365.com -smtpPort 587 -smtpCredential $credential -smtpSSL -threshold 1
+
+Importing Office 365 Credential from an encrypted XML file.
 #>
+
+Param(
+        # office 365 credential
+        # you can pass the credential using variable ($credential = Get-Credential)
+        # then use parameter like so: -credential $credential
+        # OR created an encrypted XML (Get-Credential | export-clixml <file.xml>)
+        # then use parameter like so: -credential (import-clixml <file.xml>)
+        [Parameter(Mandatory=$true)]
+        [pscredential]$credential,
+
+        #path to the log directory (eg. c:\scripts\logs)
+        [Parameter()]
+        [string]$logDirectory,
+        
+        #Sender Email Address
+        [Parameter(Mandatory=$true)]
+        [string]$sender,
+
+        #Recipient Email Addresses - separate with comma
+        [Parameter(Mandatory=$true)]
+		[string[]]$recipients,
+		
+		#smtpServer
+        [Parameter(Mandatory=$true)]
+        [string]$smtpServer,
+
+        #smtpPort
+        [Parameter(Mandatory=$true)]
+        [string]$smtpPort,
+
+        #credential for SMTP server (if applicable)
+        [Parameter()]
+        [pscredential]$smtpCredential,
+
+        #switch to indicate if SSL will be used for SMTP relay
+        [Parameter()]
+        [switch]$smtpSSL,
+
+        #Delete older files (in days)
+        [Parameter()]
+		[int]$removeOldFiles,
+
+		#Threshold in Hours to trigger alert.
+		[Parameter(Mandatory=$true)]
+		[int]$threshold
+)
 
 #=================================================================================
 #	1.0 - April 19, 2018
@@ -27,32 +103,71 @@
 #		- Required PowerShell v5.1
 #=================================================================================
 
-$WarningPreference = "SilentlyContinue"
 $script_root = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-Start-Transcript -Path "$($script_root)\debugLog.txt" -Append
 
-#Note: This uses an encrypted credential (XML). To store the credential:
-#1. Login to the Server/Computer using the account that will be used to run the script/task
-#2. Run this "Get-Credential | Export-CliXml ExOnlineStoredCredential.xml"
-#3. Make sure that ExOnlineStoredCredential.xml is in the same folder as the script.
-$onLineCredential = Import-Clixml "$($script_root)\ExOnlineStoredCredential.xml"
+#MSOnline Module check
+if (!(Get-Module -ListAvailable MSOnline))
+{
+	Write-Host "ERROR: This script requires the MSOnline Module, but it isnot currently intalled on your machine." 
+	Write-Host "ERROR: Please install it first by running 'Install-Module MSOnline' inside PowerShell as an admin." 
+	EXIT
+}
 
-#mail variables - this example relays the email via O365 with authentication using port 587
-$toAddress = "june.castillote@lazyexchangeadmin.com","june.castillote@gmail.com"
-$fromAddress = "$($onLineCredential.Username)"
-$mailSubject = "ALERT: Office365 DirSync Last Update Time"
-$smtpServer = "smtp.office365.com"
-$smtpPort = "587"
+#Import Functions
+if (!(Test-Path "$script_root\xFunctions.ps1"))
+{
+	Write-Host "ERROR: This script requires functions that are present in another script" 
+	Write-Host "ERROR: Please download this file: https://raw.githubusercontent.com/junecastillote/xFunctions/master/xFunctions.ps1" 
+	Write-Host "ERROR: Then save it in $script_root, before trying to run the script again." 
+	EXIT
+}
+else {	
+	. "$script_root\xFunctions.ps1"
+}
 
-#dirsync threshold in hours
-[int]$dirSyncElapsedTimeThreshold = 0
+#Get script version and url
+if ($PSVersionTable.psversion.Major -lt 5) 
+{
+#	$functionInfo = Get-ScriptInfo -Path "$script_root\xFunctions.ps1"
+	$scriptInfo = Get-ScriptInfo -Path $MyInvocation.MyCommand.Definition
+	$timeZoneInfo = Get-TimeZoneInfo -Computer ($env:COMPUTERNAME)
+}
+else 
+{
+	#$functionInfo = Test-ScriptFileInfo -Path "$script_root\xFunctions.ps1"
+	$scriptInfo = Test-ScriptFileInfo -Path $MyInvocation.MyCommand.Definition
+	$timeZoneInfo = Get-TimeZone
+}
+#============================
 
-Write-Host (Get-Date) ": Connecting to Office 365"
+#Set Paths-------------------------------------------------------------------------------------------
+$today = Get-Date
+[string]$fileSuffix = '{0:dd-MMM-yyyy_hh-mm_tt}' -f $today
+$logFile = "$($logDirectory)\Log_$($fileSuffix).txt"
+
+#Create folders if not found
+if ($logDirectory)
+{
+    if (!(Test-Path $logDirectory)) 
+    {
+        New-Item -ItemType Directory -Path $logDirectory | Out-Null
+        #start transcribing----------------------------------------------------------------------------------
+        Start-TxnLogging $logFile
+        #----------------------------------------------------------------------------------------------------
+    }
+	else
+	{
+		Start-TxnLogging $logFile
+	}
+}
+#----------------------------------------------------------------------------------------------------
+
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Connecting to Office 365"
 
 try {
 
 		Import-Module MSOnline
-		Connect-MsolService -Credential $onLineCredential
+		Connect-MsolService -Credential $credential
 	}
 catch
 	{
@@ -60,32 +175,45 @@ catch
 		EXIT
 	}
 
-Write-Host (Get-Date) ": Retrieve Last Update Time"
-$TimeZoneUTC = (Get-TimeZone).ToString().Split(" ")[0]
-$TimeZoneID = (Get-TimeZone).ID
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Retrieve Last Update Time"
+$timeZone = $timeZoneInfo.DisplayName.Split(" ")[0]
 
-
-$info = Get-MsolCompanyInformation
+$LastDirSyncTime = (Get-MsolCompanyInformation).LastDirSyncTime
 $timeNow = (Get-Date).ToLocalTime()
-$dirSyncElapsedTime = New-TimeSpan -Start $info.LastDirSyncTime.ToLocalTime() -End $timeNow
-Write-Host (Get-Date) ": Time Now is $timeNow $($TimeZoneUTC) ($($TimeZoneID))"
-Write-Host (Get-Date) ": Last DirSync Time $($info.LastDirSyncTime.ToLocalTime()) $($TimeZoneUTC) ($($TimeZoneID))"
-Write-Host (Get-Date) ": Total Elapsed Time $($dirSyncElapsedTime.Hours) Hours"
+$dirSyncElapsedTime = (New-TimeSpan -Start $LastDirSyncTime.ToLocalTime() -End $timeNow).TotalHours
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Alert Threshold = $threshold(H)"
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Time Now = $($timeNow.ToString("dd-MMM-yyyy hh:mm:ss tt")) $($timeZone)"
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Last DirSync Time = $($LastDirSyncTime.ToString("dd-MMM-yyyy hh:mm:ss tt")) $($timeZone)"
+Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Total Elapsed Time = $($dirSyncElapsedTime.ToString('N2'))(H)"
 
-if ($dirSyncElapsedTime.Hours -ge $dirSyncElapsedTimeThreshold)
+if ($dirSyncElapsedTime -gt $threshold)
 {
-	Write-Host (Get-Date) ": Sending Email Alert"
-	$mailParams = @{		
-		To = $toAddress
-		From = $fromAddress
-		Subject = $mailSubject
-		Body = "Last DirSync Time ($($info.LastDirSyncTime)) was over $($dirSyncElapsedTime.Hours) HOURS ago"
-		SmtpServer = $smtpServer
+	$mailBody = @(
+		"<p>Last DirSync Time - $($LastDirSyncTime.ToString("dd-MMM-yyyy hh:mm:ss tt")) $($timeZone) - was over $($dirSyncElapsedTime.ToString('N2'))(H) ago</p>"
+		"<p><a href=""$($scriptInfo.ProjectURI)"">$($MyInvocation.MyCommand.Definition.ToString().Split("\")[-1].Split(".")[0]) $($scriptInfo.version)</a></p>"
+	)
+
+	$mailParams = @{
+		From = $sender
+		To = $recipients
+		Subject = "ALERT!!!: [$((Get-msOlCompanyInformation).DisplayName)] Office365 DirSync Last Update Time is Outdated"
+		Body = ($mailBody -join "`n")
+		smtpServer = $smtpServer
 		Port = $smtpPort
-		Credential = $onLineCredential
+		useSSL = $smtpSSL
+		BodyAsHtml = $true
 		Priority = "High"
 	}
-	Send-MailMessage @mailParams -UseSSL
+
+	if ($smtpCredential) 
+	{
+		$mailParams += @{
+			credential = $smtpCredential
+		}
+	}
+
+	Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Sending email to" ($recipients -join ",") -ForegroundColor Green
+	Send-MailMessage @mailParams
 }
-Write-Host (Get-Date) ": Done"
-Stop-Transcript
+
+Stop-TxnLogging

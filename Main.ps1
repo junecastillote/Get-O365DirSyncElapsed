@@ -5,8 +5,8 @@
 $scriptFile = "C:\GitHub\Get-O365DirSyncElapsed\Get-O365DirSyncElapsed.ps1"
 
 #[REQUIRED]
-#Threshold in hours
-$threshold = 0
+#Threshold in hours (eg. 1, 1.5, 2.00)
+$threshold = 1
 
 #[OPTIONAL]
 #Where do we put the transcript log?

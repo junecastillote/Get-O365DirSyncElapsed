@@ -92,7 +92,7 @@ Param(
 
 		#Threshold in Hours to trigger alert.
 		[Parameter(Mandatory=$true)]
-		[int]$threshold
+		[double]$threshold
 )
 
 #=================================================================================
@@ -239,7 +239,7 @@ $timeZone = $timeZoneInfo.DisplayName.Split(" ")[0]
 
 if (!($LastDirSyncTime = (Get-MsolCompanyInformation).LastDirSyncTime))
 {
-	$LastDirSyncTime = (Get-Date).AddHours(-2)
+	$LastDirSyncTime = (Get-Date).AddHours(-3)
 }
 
 $timeNow = (Get-Date).ToLocalTime()

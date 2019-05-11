@@ -178,7 +178,11 @@ catch
 Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Retrieve Last Update Time"
 $timeZone = $timeZoneInfo.DisplayName.Split(" ")[0]
 
-$LastDirSyncTime = (Get-MsolCompanyInformation).LastDirSyncTime
+if (!($LastDirSyncTime = (Get-MsolCompanyInformation).LastDirSyncTime))
+{
+	$LastDirSyncTime = (Get-Date).AddHours(-2)
+}
+
 $timeNow = (Get-Date).ToLocalTime()
 $dirSyncElapsedTime = (New-TimeSpan -Start $LastDirSyncTime.ToLocalTime() -End $timeNow).TotalHours
 Write-Host (get-date -Format "dd-MMM-yyyy hh:mm:ss tt") ": Alert Threshold = $threshold(H)"

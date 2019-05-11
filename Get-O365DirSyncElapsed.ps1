@@ -117,7 +117,7 @@ if (!(Get-Module -ListAvailable MSOnline))
 if (!(Test-Path "$script_root\xFunctions.ps1"))
 {
 	Write-Host "ERROR: This script requires functions that are present in another script" 
-	Write-Host "ERROR: Please download this file: https://raw.githubusercontent.com/junecastillote/xFunctions/master/xFunctions.ps1" 
+	Write-Host "ERROR: Please download this file (1.0): https://raw.githubusercontent.com/junecastillote/xFunctions/master/xFunctions.ps1" 
 	Write-Host "ERROR: Then save it in $script_root, before trying to run the script again." 
 	EXIT
 }
